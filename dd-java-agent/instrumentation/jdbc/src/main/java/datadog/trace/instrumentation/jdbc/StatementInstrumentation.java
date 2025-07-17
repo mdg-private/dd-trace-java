@@ -58,7 +58,11 @@ public final class StatementInstrumentation extends InstrumenterModule.Tracing
 
   @Override
   public String[] helperClassNames() {
-    return new String[] {packageName + ".JDBCDecorator", packageName + ".SQLCommenter"};
+    return new String[] {
+      packageName + ".JDBCDecorator",
+      packageName + ".SQLCommenter",
+      packageName + ".SQLCommenterContext"
+    };
   }
 
   // prepend mode will prepend the SQL comment to the raw sql query
