@@ -305,9 +305,8 @@ public class SQLCommenter {
     if (customFields != null) {
       for (Map.Entry<String, String> entry : customFields.entrySet()) {
         if (entry.getKey() != null && entry.getValue() != null) {
-          // Account for URL encoding overhead (approximately 3x for worst case)
-          len += entry.getKey().length() * 3;
-          len += entry.getValue().length() * 3;
+          len += entry.getKey().length();
+          len += entry.getValue().length();
           len += 4; // equals, comma, and two quotes
         }
       }
