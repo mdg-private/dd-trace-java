@@ -21,7 +21,7 @@ import java.util.concurrent.Callable;
  * });
  *
  * // Add custom fields using a map
- * Map&lt;String, Object&gt; customFields = Map.of(
+ * Map<String, Object> customFields = Map.of(
  *   "tenant_id", "abc123",
  *   "operation", "user_lookup"
  * );
