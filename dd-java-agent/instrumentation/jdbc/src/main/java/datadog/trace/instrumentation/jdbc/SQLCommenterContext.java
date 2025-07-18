@@ -91,7 +91,6 @@ public class SQLCommenterContext {
 
   /**
    * Executes a block of code with the given context map, restoring the original context afterward.
-   * This method is similar to the withLoggingFields pattern from the provided Kotlin code.
    *
    * @param contextMap the context map to use during execution
    * @param block the code block to execute
