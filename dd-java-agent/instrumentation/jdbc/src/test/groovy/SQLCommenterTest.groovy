@@ -4,6 +4,7 @@ import datadog.trace.bootstrap.instrumentation.api.AgentTracer
 import datadog.trace.bootstrap.instrumentation.api.Tags
 
 import datadog.trace.instrumentation.jdbc.SQLCommenter
+import datadog.trace.instrumentation.jdbc.SQLCommenterContext
 
 import static datadog.trace.agent.test.utils.TraceUtils.runUnderTrace
 
@@ -144,5 +145,186 @@ class SQLCommenterTest extends AgentTestRunner {
     "SELECT * FROM foo"                                                                                           | "SqlCommenter" | "Test" | "my-service" | "postgres" | "h"  | "n"    | "TestVersion" | true        | true          | "00-00000000000000007fffffffffffffff-000000024cb016ea-00" | ""          | "SELECT * FROM foo /*ddps='SqlCommenter',dddbs='my-service',ddh='h',dddb='n',dde='Test',ddpv='TestVersion',traceparent='00-00000000000000007fffffffffffffff-000000024cb016ea-00'*/"
     "SELECT * FROM foo"                                                                                           | "SqlCommenter" | "Test" | "my-service" | "mysql"    | "h"  | "n"    | "TestVersion" | true        | true          | "00-00000000000000007fffffffffffffff-000000024cb016ea-00" | "testPeer" | "SELECT * FROM foo /*ddps='SqlCommenter',dddbs='my-service',ddh='h',dddb='n',ddprs='testPeer',dde='Test',ddpv='TestVersion',traceparent='00-00000000000000007fffffffffffffff-000000024cb016ea-00'*/"
     "SELECT * FROM foo"                                                                                           | "SqlCommenter" | "Test" | "my-service" | "postgres" | "h"  | "n"    | "TestVersion" | true        | true          | "00-00000000000000007fffffffffffffff-000000024cb016ea-00" | "testPeer" | "SELECT * FROM foo /*ddps='SqlCommenter',dddbs='my-service',ddh='h',dddb='n',ddprs='testPeer',dde='Test',ddpv='TestVersion',traceparent='00-00000000000000007fffffffffffffff-000000024cb016ea-00'*/"
+  }
+
+  def "test SQL comment injection with custom fields"() {
+    setup:
+    injectSysConfig("dd.service", "SqlCommenter")
+    injectSysConfig("dd.env", "Test")
+    injectSysConfig("dd.version", "TestVersion")
+
+    when:
+    String sqlWithComment = ""
+
+    // Set up custom fields in context
+    SQLCommenterContext.put("tenant_id", "abc123")
+    SQLCommenterContext.put("request_id", "req-456")
+    SQLCommenterContext.put("user_id", 789)
+
+    sqlWithComment = SQLCommenter.inject(
+      "SELECT * FROM foo",
+      "my-service",
+      "mysql",
+      "h",
+      "n",
+      "00-00000000000000007fffffffffffffff-000000024cb016ea-00",
+      true,
+      true
+      )
+
+    SQLCommenterContext.clear()
+
+    then:
+    // Should contain all standard fields plus custom fields
+    sqlWithComment.contains("ddps='SqlCommenter'")
+    sqlWithComment.contains("dddbs='my-service'")
+    sqlWithComment.contains("ddh='h'")
+    sqlWithComment.contains("dddb='n'")
+    sqlWithComment.contains("dde='Test'")
+    sqlWithComment.contains("ddpv='TestVersion'")
+    sqlWithComment.contains("traceparent='00-00000000000000007fffffffffffffff-000000024cb016ea-00'")
+    sqlWithComment.contains("tenant_id='abc123'")
+    sqlWithComment.contains("request_id='req-456'")
+    sqlWithComment.contains("user_id='789'")
+    sqlWithComment.startsWith("SELECT * FROM foo /*")
+    sqlWithComment.endsWith("*/")
+  }
+
+  def "test SQL comment injection with custom fields using withSQLCommentFields"() {
+    setup:
+    injectSysConfig("dd.service", "SqlCommenter")
+    injectSysConfig("dd.env", "Test")
+    injectSysConfig("dd.version", "TestVersion")
+
+    when:
+    String sqlWithComment = SQLCommenterContext.withSQLCommentFields(
+      ["tenant_id": "abc123", "request_id": "req-456"], {
+        return SQLCommenter.inject(
+          "SELECT * FROM foo",
+          "my-service",
+          "mysql",
+          "h",
+          "n",
+          "00-00000000000000007fffffffffffffff-000000024cb016ea-00",
+          true,
+          true
+          )
+      }
+      )
+
+    then:
+    // Should contain all standard fields plus custom fields
+    sqlWithComment.contains("ddps='SqlCommenter'")
+    sqlWithComment.contains("dddbs='my-service'")
+    sqlWithComment.contains("tenant_id='abc123'")
+    sqlWithComment.contains("request_id='req-456'")
+    sqlWithComment.startsWith("SELECT * FROM foo /*")
+    sqlWithComment.endsWith("*/")
+
+    // Context should be cleared after the block
+    SQLCommenterContext.isEmpty()
+  }
+
+  def "test SQL comment injection with empty custom fields"() {
+    setup:
+    injectSysConfig("dd.service", "SqlCommenter")
+    injectSysConfig("dd.env", "Test")
+    injectSysConfig("dd.version", "TestVersion")
+
+    when:
+    String sqlWithComment = SQLCommenter.inject(
+      "SELECT * FROM foo",
+      "my-service",
+      "mysql",
+      "h",
+      "n",
+      "00-00000000000000007fffffffffffffff-000000024cb016ea-00",
+      true,
+      true
+      )
+
+    then:
+    // Should contain only standard fields
+    sqlWithComment.contains("ddps='SqlCommenter'")
+    sqlWithComment.contains("dddbs='my-service'")
+    sqlWithComment.contains("ddh='h'")
+    sqlWithComment.contains("dddb='n'")
+    sqlWithComment.contains("dde='Test'")
+    sqlWithComment.contains("ddpv='TestVersion'")
+    sqlWithComment.contains("traceparent='00-00000000000000007fffffffffffffff-000000024cb016ea-00'")
+    sqlWithComment.startsWith("SELECT * FROM foo /*")
+    sqlWithComment.endsWith("*/")
+  }
+
+  def "test SQL comment injection with custom fields containing special characters"() {
+    setup:
+    injectSysConfig("dd.service", "SqlCommenter")
+    injectSysConfig("dd.env", "Test")
+    injectSysConfig("dd.version", "TestVersion")
+
+    when:
+    String sqlWithComment = ""
+
+    // Set up custom fields with special characters that need URL encoding
+    SQLCommenterContext.put("special_key", "value with spaces")
+    SQLCommenterContext.put("unicode_key", "value_with_émojis_🎉")
+    SQLCommenterContext.put("symbols_key", "value&with=symbols")
+
+    sqlWithComment = SQLCommenter.inject(
+      "SELECT * FROM foo",
+      "my-service",
+      "mysql",
+      "h",
+      "n",
+      null,
+      false,
+      true
+      )
+
+    SQLCommenterContext.clear()
+
+    then:
+    // Should contain URL-encoded custom fields (URLEncoder uses + for spaces)
+    sqlWithComment.contains("special_key='value+with+spaces'")
+    sqlWithComment.contains("unicode_key=")  // Should be URL encoded
+    sqlWithComment.contains("symbols_key='value%26with%3Dsymbols'")
+    sqlWithComment.startsWith("SELECT * FROM foo /*")
+    sqlWithComment.endsWith("*/")
+  }
+
+  def "test SQL comment injection with null and empty custom field values"() {
+    setup:
+    injectSysConfig("dd.service", "SqlCommenter")
+    injectSysConfig("dd.env", "Test")
+    injectSysConfig("dd.version", "TestVersion")
+
+    when:
+    String sqlWithComment = ""
+
+    // Set up custom fields with null and empty values
+    SQLCommenterContext.put("null_key", null)
+    SQLCommenterContext.put("empty_key", "")
+    SQLCommenterContext.put("valid_key", "valid_value")
+
+    sqlWithComment = SQLCommenter.inject(
+      "SELECT * FROM foo",
+      "my-service",
+      "mysql",
+      "h",
+      "n",
+      null,
+      false,
+      true
+      )
+
+    SQLCommenterContext.clear()
+
+    then:
+    // Should not contain null or empty fields, but should contain valid field
+    !sqlWithComment.contains("null_key")
+    !sqlWithComment.contains("empty_key")
+    sqlWithComment.contains("valid_key='valid_value'")
+    sqlWithComment.startsWith("SELECT * FROM foo /*")
+    sqlWithComment.endsWith("*/")
   }
 }

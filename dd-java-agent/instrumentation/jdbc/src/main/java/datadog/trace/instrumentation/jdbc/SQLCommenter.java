@@ -8,6 +8,7 @@ import datadog.trace.bootstrap.instrumentation.api.Tags;
 import java.io.UnsupportedEncodingException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -117,7 +118,9 @@ public class SQLCommenter {
     final String parentService = config.getServiceName();
     final String env = config.getEnv();
     final String version = config.getVersion();
-    final int commentSize = capacity(traceParent, parentService, dbService, env, version);
+    final Map<String, String> customFields = SQLCommenterContext.getCopyOfContextMap();
+    final int commentSize =
+        capacity(traceParent, parentService, dbService, env, version, customFields);
     StringBuilder sb = new StringBuilder(sql.length() + commentSize);
     boolean commentAdded = false;
     String peerService = peerServiceObj != null ? peerServiceObj.toString() : null;
@@ -137,7 +140,8 @@ public class SQLCommenter {
               peerService,
               env,
               version,
-              traceParent);
+              traceParent,
+              customFields);
       sb.append(CLOSE_COMMENT);
     } else {
       sb.append(OPEN_COMMENT);
@@ -152,7 +156,8 @@ public class SQLCommenter {
               peerService,
               env,
               version,
-              traceParent);
+              traceParent,
+              customFields);
 
       sb.append(CLOSE_COMMENT);
       sb.append(SPACE);
@@ -226,7 +231,8 @@ public class SQLCommenter {
       final String peerService,
       final String env,
       final String version,
-      final String traceparent) {
+      final String traceparent,
+      final Map<String, String> customFields) {
     int emptySize = sb.length();
 
     append(sb, PARENT_SERVICE, parentService, false);
@@ -241,6 +247,14 @@ public class SQLCommenter {
     if (injectTrace) {
       append(sb, TRACEPARENT, traceparent, sb.length() > emptySize);
     }
+
+    // Add custom fields from SQLCommenterContext
+    if (customFields != null) {
+      for (Map.Entry<String, String> entry : customFields.entrySet()) {
+        append(sb, encode(entry.getKey()), entry.getValue(), sb.length() > emptySize);
+      }
+    }
+
     return sb.length() > emptySize;
   }
 
@@ -268,7 +282,8 @@ public class SQLCommenter {
       final String parentService,
       final String dbService,
       final String env,
-      final String version) {
+      final String version,
+      final Map<String, String> customFields) {
     int len = INITIAL_CAPACITY;
     if (null != traceparent) {
       len += traceparent.length();
@@ -285,6 +300,18 @@ public class SQLCommenter {
     if (null != version) {
       len += version.length();
     }
+
+    // Add capacity for custom fields
+    if (customFields != null) {
+      for (Map.Entry<String, String> entry : customFields.entrySet()) {
+        if (entry.getKey() != null && entry.getValue() != null) {
+          len += entry.getKey().length();
+          len += entry.getValue().length();
+          len += 4; // equals, comma, and two quotes
+        }
+      }
+    }
+
     return len;
   }
 
